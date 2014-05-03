@@ -3,6 +3,7 @@ import cv2
 import numpy as np
 
 kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (15, 15))
+smallkernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
 bigkernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (35, 35))
 
 SHADOW_SIZE_THRESH = 1000
@@ -11,7 +12,7 @@ states = {
     0: 'waiting',
     1: 'reversing far',
     2: 'reversing close',
-    3: 'dumping'
+    3: 'tipping'
 }
 
 
@@ -27,6 +28,7 @@ def main(filename):
     fgbg2.apply(frame)
 
     STATE = 0
+    print states[STATE]
 
     count = 0
     while(1):
@@ -41,13 +43,15 @@ def main(filename):
         fgmask = fgbg.apply(frame)
         fgmask2 = fgbg2.apply(frame)
 
-        cv2.imshow('frame', fgmask)
-
         if STATE < 2:
+
+            cv2.imshow('frame', fgmask)
 
             opened = cv2.morphologyEx(fgmask, cv2.MORPH_OPEN, kernel)
             # cv2.imshow('opened frame', opened)
-            shadow_mask, shadow_size = get_shadow_contour(opened)
+            # get just grey (127)
+            shadow_mask, shadow_size = get_large_contour(
+                opened, SHADOW_SIZE_THRESH, 126, 128)
 
             if shadow_mask is not None:
                 # cv2.imshow('shadow mask', shadow_mask)
@@ -64,21 +68,35 @@ def main(filename):
                         STATE = 2
                         print states[STATE]
 
-        cv2.imshow('raw', frame)
-
         if STATE == 2:
 
-            closed = cv2.morphologyEx(fgmask2, cv2.MORPH_CLOSE, bigkernel)
+            # remove small noise (~3)
+            opened = cv2.morphologyEx(fgmask2, cv2.MORPH_OPEN, smallkernel)
+
+            # add bottom edge
+            # opened[]
+            import ipdb; ipdb.set_trace()
+
+            # close to combine rubble in back of truck
+            closed = cv2.morphologyEx(opened, cv2.MORPH_CLOSE, bigkernel)
+            cv2.imshow('frame', fgmask2)
             cv2.imshow('closed frame', closed)
 
-        if count > 140:
+            # get large background area
+            large_mask, mask_size = get_large_contour(closed, 100, 254, 255)
+
+            if large_mask is not None:
+                frame[large_mask == 255] = (0, 0, 255)
+
+        cv2.imshow('raw', frame)
+
+        if count > 300:
             wait()
         count += 1
 
 
-def get_shadow_contour(mask):
-    # get just grey (127)
-    shadow = cv2.inRange(mask.copy(), 126, 128)
+def get_large_contour(mask, min_size=100, lbounds=0, ubounds=100):
+    shadow = cv2.inRange(mask.copy(), lbounds, ubounds)
     shadow_contour = np.zeros(shadow.shape, np.uint8)
 
     contours, hierarchy = cv2.findContours(
@@ -99,7 +117,7 @@ def get_shadow_contour(mask):
     max_contour = max(contour_sizes, key=lambda x: x[0])
     contour_size, largest_contour = max_contour
 
-    if contour_size > SHADOW_SIZE_THRESH:
+    if contour_size > min_size:
         # fill largest contour
         # import ipdb; ipdb.set_trace()
         cv2.drawContours(shadow_contour, [largest_contour], 0, 255, -1)
