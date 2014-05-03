@@ -16,9 +16,13 @@ states = {
 }
 
 
-def main(filename):
+def main(filename, show=True):
+
+    if not show:
+        cv2.imshow = lambda x, y: None
 
     video = cv2.VideoCapture(filename)
+
     fgbg = cv2.BackgroundSubtractorMOG2(100, 150, True)
     fgbg2 = cv2.BackgroundSubtractorMOG2(100, 150, False)
 
@@ -26,6 +30,14 @@ def main(filename):
     playing, frame = video.read()
     fgbg.apply(frame)
     fgbg2.apply(frame)
+
+    codecid = "XVID"
+    codec = cv2.cv.FOURCC(*codecid)
+    frame_size = frame.shape[:2]
+    video_out = cv2.VideoWriter('out.avi', codec, 10, frame_size)
+
+    if not video_out.isOpened():
+        raise RuntimeError('Output file not open')
 
     STATE = 0
     print states[STATE]
@@ -44,6 +56,7 @@ def main(filename):
         fgmask2 = fgbg2.apply(frame)
 
         if STATE < 2:
+            # Find shadow region
 
             cv2.imshow('frame', fgmask)
 
@@ -69,29 +82,67 @@ def main(filename):
                         print states[STATE]
 
         if STATE == 2:
+            # Isolate truck trap
+            # detect large rocks
 
             # remove small noise (~3)
             opened = cv2.morphologyEx(fgmask2, cv2.MORPH_OPEN, smallkernel)
 
-            # add bottom edge
-            # opened[]
-            import ipdb; ipdb.set_trace()
-
             # close to combine rubble in back of truck
             closed = cv2.morphologyEx(opened, cv2.MORPH_CLOSE, bigkernel)
-            cv2.imshow('frame', fgmask2)
-            cv2.imshow('closed frame', closed)
+            # cv2.imshow('closed frame', closed)
 
             # get large background area
             large_mask, mask_size = get_large_contour(closed, 100, 254, 255)
 
-            if large_mask is not None:
-                frame[large_mask == 255] = (0, 0, 255)
+            if large_mask is None:
+                continue
+
+            # Background green
+            frame[large_mask != 255] = (0, 255, 0)
+
+            # ignore background
+            fgmask2[large_mask != 255] = 0
+
+            cv2.imshow('frame', fgmask2)
+            opened = cv2.morphologyEx(fgmask2, cv2.MORPH_OPEN, smallkernel)
+            # cv2.imshow('opened frame', opened)
+
+            contours, hierarchy = cv2.findContours(
+                opened,
+                cv2.RETR_TREE,
+                cv2.CHAIN_APPROX_SIMPLE
+            )
+
+            large_rocks_mask = np.zeros(opened.shape, np.uint8)
+            thresh = 350
+            # Find large contours
+            large_rocks = [
+                contour for contour in contours
+                if cv2.contourArea(contour) > thresh
+            ]
+
+            # find rectangular objects
+            round_rocks = []
+            for rock in large_rocks:
+                x, y, w, h = cv2.boundingRect(rock)
+                ratio = w / h if w < h else h / w
+                if ratio > 0.7:
+                    round_rocks.append(rock)
+                #import ipdb; ipdb.set_trace()
+
+            cv2.drawContours(large_rocks_mask, round_rocks, -1, 255, -1)
+            #cv2.drawContours(large_rocks_mask, round_rocks, -1, 190, -1)
+            cv2.imshow('large rocks', large_rocks_mask)
+            large_rocks_mask = cv2.morphologyEx(large_rocks_mask, cv2.MORPH_CLOSE, smallkernel)
+            # print len(large_rocks)
+            frame[large_rocks_mask == 255] = (0, 0, 255)
 
         cv2.imshow('raw', frame)
+        video_out.write(frame)
 
-        if count > 300:
-            wait()
+        # if count % 10 == 0:
+        # wait()
         count += 1
 
 
@@ -132,8 +183,7 @@ def wait():
 if __name__ == '__main__':
     os.chdir('/Users/alex/Projects/rio_video')
     # try:
-    main('background.mp4')
-    wait()
+    main('background.mp4', False)
     # except Exception as e:
     #     print e
         # wait()
