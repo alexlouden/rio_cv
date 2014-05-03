@@ -31,10 +31,11 @@ def main(filename, show=True):
     fgbg.apply(frame)
     fgbg2.apply(frame)
 
-    codecid = "XVID"
+    codecid = "avc1"
     codec = cv2.cv.FOURCC(*codecid)
-    frame_size = frame.shape[:2]
-    video_out = cv2.VideoWriter('out.avi', codec, 10, frame_size)
+    frame_size = frame.shape[1::-1]
+    filename_out = '_out.'.join(filename.split('.', 1))
+    video_out = cv2.VideoWriter(filename_out, codec, 10, frame_size)
 
     if not video_out.isOpened():
         raise RuntimeError('Output file not open')
@@ -43,11 +44,11 @@ def main(filename, show=True):
     print states[STATE]
 
     count = 0
-    while(1):
+    while True:
         playing, frame = video.read()
 
         if not playing:
-            return
+            break
 
         # blur image
         frame = cv2.GaussianBlur(frame, (3, 3), 0)
@@ -134,7 +135,7 @@ def main(filename, show=True):
             cv2.drawContours(large_rocks_mask, round_rocks, -1, 255, -1)
             #cv2.drawContours(large_rocks_mask, round_rocks, -1, 190, -1)
             cv2.imshow('large rocks', large_rocks_mask)
-            large_rocks_mask = cv2.morphologyEx(large_rocks_mask, cv2.MORPH_CLOSE, smallkernel)
+            large_rocks_mask = cv2.morphologyEx(large_rocks_mask, cv2.MORPH_CLOSE, kernel)
             # print len(large_rocks)
             frame[large_rocks_mask == 255] = (0, 0, 255)
 
@@ -144,6 +145,8 @@ def main(filename, show=True):
         # if count % 10 == 0:
         # wait()
         count += 1
+
+    video_out.release()
 
 
 def get_large_contour(mask, min_size=100, lbounds=0, ubounds=100):
@@ -182,9 +185,5 @@ def wait():
 
 if __name__ == '__main__':
     os.chdir('/Users/alex/Projects/rio_video')
-    # try:
-    main('background.mp4', False)
-    # except Exception as e:
-    #     print e
-        # wait()
-        # raise
+    import sys
+    main(sys.argv[1], False)
