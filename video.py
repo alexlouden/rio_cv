@@ -7,12 +7,26 @@ bigkernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (35, 35))
 
 SHADOW_SIZE_THRESH = 1000
 
+states = {
+    0: 'waiting',
+    1: 'reversing far',
+    2: 'reversing close',
+    3: 'dumping'
+}
+
 
 def main(filename):
 
     video = cv2.VideoCapture(filename)
     fgbg = cv2.BackgroundSubtractorMOG2(100, 150, True)
     fgbg2 = cv2.BackgroundSubtractorMOG2(100, 150, False)
+
+    # Use first frame for background removal
+    playing, frame = video.read()
+    fgbg.apply(frame)
+    fgbg2.apply(frame)
+
+    STATE = 0
 
     count = 0
     while(1):
@@ -29,20 +43,35 @@ def main(filename):
 
         cv2.imshow('frame', fgmask)
 
-        opened = cv2.morphologyEx(fgmask, cv2.MORPH_OPEN, kernel)
-        # cv2.imshow('opened frame', opened)
-        shadow_mask, shadow_size = get_shadow_contour(opened)
+        if STATE < 2:
 
-        if shadow_mask is not None:
-            # cv2.imshow('shadow mask', shadow_mask)
-            # make shadows blue
-            frame[shadow_mask == 255] = (255, 0, 0)
-            cv2.imshow('raw', frame)
+            opened = cv2.morphologyEx(fgmask, cv2.MORPH_OPEN, kernel)
+            # cv2.imshow('opened frame', opened)
+            shadow_mask, shadow_size = get_shadow_contour(opened)
 
-        closed = cv2.morphologyEx(fgmask2, cv2.MORPH_CLOSE, bigkernel)
-        cv2.imshow('closed frame', closed)
+            if shadow_mask is not None:
+                # cv2.imshow('shadow mask', shadow_mask)
+                # make shadows blue
+                frame[shadow_mask == 255] = (255, 0, 0)
 
-        if count > 100:
+                if STATE == 0:
+                    if shadow_size > 4000:
+                        STATE = 1
+                        print states[STATE]
+
+                if STATE == 1:
+                    if shadow_size < 2000:
+                        STATE = 2
+                        print states[STATE]
+
+        cv2.imshow('raw', frame)
+
+        if STATE == 2:
+
+            closed = cv2.morphologyEx(fgmask2, cv2.MORPH_CLOSE, bigkernel)
+            cv2.imshow('closed frame', closed)
+
+        if count > 140:
             wait()
         count += 1
 
