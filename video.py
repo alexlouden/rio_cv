@@ -2,14 +2,10 @@ import os
 import cv2
 import numpy as np
 
-min_yellow = np.array([25, 0, 0])
-max_yellow = np.array([70, 100, 256])
-
-min_rocks = np.array([0, 0, 0])
-max_rocks = np.array([180, 30, 256])
-
 kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (15, 15))
 bigkernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (35, 35))
+
+SHADOW_SIZE_THRESH = 1000
 
 
 def main(filename):
@@ -31,24 +27,27 @@ def main(filename):
         fgmask = fgbg.apply(frame)
         fgmask2 = fgbg2.apply(frame)
 
-        cv2.imshow('raw', frame)
-
         cv2.imshow('frame', fgmask)
 
         opened = cv2.morphologyEx(fgmask, cv2.MORPH_OPEN, kernel)
-        cv2.imshow('opened frame', opened)
+        # cv2.imshow('opened frame', opened)
+        shadow_mask, shadow_size = get_shadow_contour(opened)
 
-        get_contour(opened)
+        if shadow_mask is not None:
+            # cv2.imshow('shadow mask', shadow_mask)
+            # make shadows blue
+            frame[shadow_mask == 255] = (255, 0, 0)
+            cv2.imshow('raw', frame)
 
-        # closed = cv2.morphologyEx(fgmask2, cv2.MORPH_CLOSE, bigkernel)
-        # cv2.imshow('closed frame', closed)
+        closed = cv2.morphologyEx(fgmask2, cv2.MORPH_CLOSE, bigkernel)
+        cv2.imshow('closed frame', closed)
 
         if count > 100:
             wait()
         count += 1
 
 
-def get_contour(mask):
+def get_shadow_contour(mask):
     # get just grey (127)
     shadow = cv2.inRange(mask.copy(), 126, 128)
     shadow_contour = np.zeros(shadow.shape, np.uint8)
@@ -58,10 +57,9 @@ def get_contour(mask):
         cv2.RETR_TREE,
         cv2.CHAIN_APPROX_SIMPLE
     )
-    print len(contours)
 
     if not contours:
-        return
+        return None, 0
 
     # Find large contours
     contour_sizes = [
@@ -72,16 +70,12 @@ def get_contour(mask):
     max_contour = max(contour_sizes, key=lambda x: x[0])
     contour_size, largest_contour = max_contour
 
-    print contour_size
-
-    if contour_size > 1000:
+    if contour_size > SHADOW_SIZE_THRESH:
         # fill largest contour
         # import ipdb; ipdb.set_trace()
         cv2.drawContours(shadow_contour, [largest_contour], 0, 255, -1)
 
-    cv2.imshow('shadow contour', shadow_contour)
-
-    return shadow_contour
+    return shadow_contour, contour_size
 
 
 def wait():
