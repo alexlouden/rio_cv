@@ -7,6 +7,8 @@ smallkernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
 bigkernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (35, 35))
 
 SHADOW_SIZE_THRESH = 1000
+LARGE_ROCK_THRESH = 300
+ROCK_ROUNDNESS = 0.6
 
 states = {
     0: 'waiting',
@@ -64,6 +66,7 @@ def main(filename, show=True):
             opened = cv2.morphologyEx(fgmask, cv2.MORPH_OPEN, kernel)
             # cv2.imshow('opened frame', opened)
             # get just grey (127)
+
             shadow_mask, shadow_size = get_large_contour(
                 opened, SHADOW_SIZE_THRESH, 126, 128)
 
@@ -100,6 +103,7 @@ def main(filename, show=True):
                 continue
 
             # Background green
+            large_mask = cv2.morphologyEx(large_mask, cv2.MORPH_DILATE, kernel)
             frame[large_mask != 255] = (0, 255, 0)
 
             # ignore background
@@ -116,11 +120,11 @@ def main(filename, show=True):
             )
 
             large_rocks_mask = np.zeros(opened.shape, np.uint8)
-            thresh = 350
+
             # Find large contours
             large_rocks = [
                 contour for contour in contours
-                if cv2.contourArea(contour) > thresh
+                if cv2.contourArea(contour) > LARGE_ROCK_THRESH
             ]
 
             # find rectangular objects
@@ -128,7 +132,7 @@ def main(filename, show=True):
             for rock in large_rocks:
                 x, y, w, h = cv2.boundingRect(rock)
                 ratio = w / h if w < h else h / w
-                if ratio > 0.7:
+                if ratio > ROCK_ROUNDNESS:
                     round_rocks.append(rock)
                 #import ipdb; ipdb.set_trace()
 
@@ -142,8 +146,9 @@ def main(filename, show=True):
         cv2.imshow('raw', frame)
         video_out.write(frame)
 
-        # if count % 10 == 0:
-        # wait()
+        if show:
+            wait()
+
         count += 1
 
     video_out.release()
